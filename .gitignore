@@ -15,9 +15,17 @@ htmlcov/
 *.pdf
 *.PDF
 uploads/
-data/rag_index.json
-data/demo_access_token.txt
-data/*.tmp
+data/
+output/
+
+# Private keys, local databases, and certificate bundles.
+*.pem
+*.key
+*.p12
+*.pfx
+*.sqlite
+*.sqlite3
+*.db
 
 *.log
 

@@ -253,7 +253,7 @@ class RAGService:
                 {
                     "chunk_id": f"{document_id}:{index}",
                     "document_id": document_id,
-                        "owner_id": owner_id,
+                    "owner_id": owner_id,
                     "filename": safe_filename,
                     "page": chunk["page"],
                     "text": chunk["text"],
