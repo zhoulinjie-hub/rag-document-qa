@@ -1,0 +1,21 @@
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+
+# Uploaded documents and generated indexes must stay local.
+*.pdf
+*.PDF
+uploads/
+data/rag_index.json
+data/*.tmp
+
+*.log
