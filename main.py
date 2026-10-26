@@ -5,7 +5,9 @@ from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import FileResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from rag_service import (
@@ -50,12 +52,14 @@ rag_service = RAGService(
 )
 demo_security = DemoSecurity.from_environment(PROJECT_DIR)
 bearer_scheme = HTTPBearer(auto_error=False)
+STATIC_DIR = PROJECT_DIR / "static"
 
 app = FastAPI(
     title="智能文档问答系统",
     description="PDF 上传、文本切分、向量化、相似度检索和大模型问答的一体化 RAG API",
     version="2.0.0",
 )
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
 class SessionRequest(BaseModel):
@@ -147,9 +151,9 @@ async def add_security_headers(request: Request, call_next):
     return response
 
 
-@app.get("/")
+@app.get("/", include_in_schema=False)
 def home():
-    return {"message": "智能问答系统启动成功"}
+    return FileResponse(STATIC_DIR / "index.html", media_type="text/html")
 
 
 @app.get("/health")
