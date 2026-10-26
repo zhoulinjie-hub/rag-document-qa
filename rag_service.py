@@ -131,6 +131,11 @@ class RAGService:
                 )
             self._documents = payload.get("documents", {})
             self._chunks = payload.get("chunks", [])
+            # 旧索引没有会话归属。保留数据，但默认不向任何新会话暴露。
+            for document in self._documents.values():
+                document.setdefault("owner_id", "legacy")
+            for chunk in self._chunks:
+                chunk.setdefault("owner_id", "legacy")
         except Exception as exc:
             # 不让损坏的缓存阻止 API 启动，也不覆盖原文件。
             self._load_warning = f"现有索引未加载：{exc}"
@@ -197,6 +202,7 @@ class RAGService:
         self,
         pdf_bytes: bytes,
         filename: str,
+        owner_id: str,
         chunk_size: int = 500,
         overlap: int = 100,
     ) -> dict[str, Any]:
@@ -204,12 +210,15 @@ class RAGService:
             raise ValueError("overlap 必须小于 chunk_size")
 
         safe_filename = Path(filename).name
-        document_id = hashlib.sha256(pdf_bytes).hexdigest()[:20]
+        document_id = hashlib.sha256(
+            owner_id.encode("utf-8") + b"\0" + pdf_bytes
+        ).hexdigest()[:20]
 
         with self._lock:
             existing = self._documents.get(document_id)
             if (
                 existing
+                and existing.get("owner_id") == owner_id
                 and existing.get("chunk_size") == chunk_size
                 and existing.get("overlap") == overlap
             ):
@@ -244,6 +253,7 @@ class RAGService:
                 {
                     "chunk_id": f"{document_id}:{index}",
                     "document_id": document_id,
+                        "owner_id": owner_id,
                     "filename": safe_filename,
                     "page": chunk["page"],
                     "text": chunk["text"],
@@ -253,6 +263,7 @@ class RAGService:
 
         document_info = {
             "document_id": document_id,
+            "owner_id": owner_id,
             "filename": safe_filename,
             "pages": len(pages),
             "text_length": sum(len(text) for _, text in pages),
@@ -284,11 +295,14 @@ class RAGService:
     ) -> dict[str, Any]:
         overlap = int(document["overlap"])
         texts = [chunk["text"] for chunk in chunks]
+        public_document = {
+            key: value
+            for key, value in document.items()
+            if key != "owner_id"
+        }
         return {
-            **document,
+            **public_document,
             "reused": reused,
-            # 保留原上传接口返回 chunks 和 overlap_check 的能力。
-            "chunks": texts,
             "overlap_check": (
                 texts[0][-overlap:] == texts[1][:overlap]
                 if overlap > 0 and len(texts) >= 2
@@ -299,6 +313,7 @@ class RAGService:
     def search(
         self,
         question: str,
+        owner_id: str,
         top_k: int = 3,
         document_id: str | None = None,
         min_score: float | None = None,
@@ -308,12 +323,15 @@ class RAGService:
             raise ValueError("问题不能为空")
 
         with self._lock:
-            if document_id and document_id not in self._documents:
-                raise DocumentNotFoundError(f"未找到文档索引：{document_id}")
+            if document_id:
+                document = self._documents.get(document_id)
+                if not document or document.get("owner_id") != owner_id:
+                    raise DocumentNotFoundError("未找到指定文档")
             candidates = [
                 chunk.copy()
                 for chunk in self._chunks
-                if document_id is None or chunk["document_id"] == document_id
+                if chunk.get("owner_id") == owner_id
+                and (document_id is None or chunk["document_id"] == document_id)
             ]
 
         if not candidates:
@@ -339,6 +357,7 @@ class RAGService:
     def answer(
         self,
         question: str,
+        owner_id: str,
         top_k: int = 3,
         document_id: str | None = None,
         min_score: float | None = None,
@@ -348,12 +367,22 @@ class RAGService:
         if not question:
             raise ValueError("问题不能为空")
 
-        client = self._require_client()
         sources = (
-            self.search(question, top_k, document_id, min_score)
+            self.search(question, owner_id, top_k, document_id, min_score)
             if use_rag
             else []
         )
+
+        if use_rag and not sources:
+            return {
+                "question": question,
+                "answer": "根据已上传文档无法确定。",
+                "mode": "insufficient_context",
+                "sources": [],
+                "model": None,
+            }
+
+        client = self._require_client()
 
         if sources:
             context = "\n\n".join(
@@ -391,18 +420,27 @@ class RAGService:
             "model": self.chat_model,
         }
 
-    def list_documents(self) -> list[dict[str, Any]]:
+    def list_documents(self, owner_id: str) -> list[dict[str, Any]]:
         with self._lock:
             return sorted(
-                (document.copy() for document in self._documents.values()),
+                (
+                    {
+                        key: value
+                        for key, value in document.items()
+                        if key != "owner_id"
+                    }
+                    for document in self._documents.values()
+                    if document.get("owner_id") == owner_id
+                ),
                 key=lambda item: item["indexed_at"],
                 reverse=True,
             )
 
-    def delete_document(self, document_id: str) -> None:
+    def delete_document(self, document_id: str, owner_id: str) -> None:
         with self._lock:
-            if document_id not in self._documents:
-                raise DocumentNotFoundError(f"未找到文档索引：{document_id}")
+            document = self._documents.get(document_id)
+            if not document or document.get("owner_id") != owner_id:
+                raise DocumentNotFoundError("未找到指定文档")
             del self._documents[document_id]
             self._chunks = [
                 chunk for chunk in self._chunks

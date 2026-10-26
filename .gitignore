@@ -16,6 +16,7 @@ htmlcov/
 *.PDF
 uploads/
 data/rag_index.json
+data/demo_access_token.txt
 data/*.tmp
 
 *.log
