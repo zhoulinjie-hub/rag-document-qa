@@ -20,3 +20,7 @@ data/demo_access_token.txt
 data/*.tmp
 
 *.log
+
+# Local validation artifacts
+logs/
+tmp/
