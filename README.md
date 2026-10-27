@@ -4,6 +4,16 @@
 
 本项目刻意保持实现透明：它使用进程内 NumPy 线性检索和本地 JSON 索引，不使用向量数据库，也没有生产级吞吐或性能数据。
 
+## 面试官快速 Review
+
+- **先看整体链路**：下方两张 Mermaid 图展示上传建库和问答检索流程。
+- **看 RAG 核心**：`rag_service.py` 中的 `index_pdf()`、`search()` 和 `answer()` 分别对应 PDF 建库、Top-K 检索和生成回答。
+- **看接口与安全**：`main.py` 负责 FastAPI 路由、统一错误处理和安全响应头；`security.py` 负责签名会话与滑动窗口限流。
+- **看前端**：`static/` 是不依赖前端框架的同源页面，真实调用后端接口并展示答案、页码、相似度和引用原文。
+- **看验证证据**：`tests/` 包含 22 项 Mock 自动化测试，`reports/` 保留受控真实验收与公开安全检查记录。
+
+推荐本地演示顺序：输入访问码 → 上传无隐私文字型 PDF → 选择文档 → 提问 → 展开引用页码与原文 → 提问无关内容验证“资料不足”。当前不提供公网 Demo；公开仓库用于代码 Review 和本地复现。
+
 ## 功能
 
 - 原生 HTML/CSS/JavaScript 单页界面，由 FastAPI 同源提供。
@@ -222,6 +232,8 @@ Authorization: Bearer <session-token>
 
 当前测试覆盖会话签名、防篡改、限流、会话隔离、PDF 错误、切分、余弦检索、索引持久化、来源返回、错误脱敏和主要 API 流程。外部 Embedding 和聊天补全均被 Mock，不会产生模型费用。
 
+最近一次本地复核：2026-10-27，Python 3.13.9，`22 passed in 0.82s`。该结果是功能回归测试，不代表并发或性能基准。
+
 受控的单文档真实验收记录见 [`reports/c1_acceptance_report.md`](reports/c1_acceptance_report.md)。该记录用于证明链路可运行，不是性能基准。
 
 ## Docker 部署配置
@@ -280,4 +292,4 @@ git ls-files -- .env ".venv/**" "*.pdf" data/rag_index.json data/demo_access_tok
 git log --oneline --all
 ```
 
-完整 C2 历史与敏感信息检查结果见 `reports/c2_public_review_report.md`。本阶段只准备本地公开 Review 版本，不创建远程仓库、不 push、不部署公网。
+完整 C2 历史与敏感信息检查结果见 `reports/c2_public_review_report.md`。公开仓库已发布在 GitHub；仓库不包含在线部署、真实密钥或演示数据，云端部署工作目前暂停。
